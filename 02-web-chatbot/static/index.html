@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Web1 ChatBot</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; }
+        #chat-container { border: 1px solid #ddd; border-radius: 8px; padding: 15px; height: 400px; overflow-y: auto; background: #f9f9f9; margin-bottom: 15px; }
+        .message { margin: 8px 0; padding: 8px 12px; border-radius: 18px; max-width: 70%; line-height: 1.4; }
+        .user { background: #007bff; color: white; margin-left: auto; }
+        .bot { background: #e9ecef; color: #333; margin-right: auto; }
+        #input-container { display: flex; gap: 10px; }
+        #user-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>Web2 ChatBot</h1>
+    <div id="chat-container"></div>
+    <div id="input-container">
+        <input type="text" id="user-input" placeholder="输入你的消息...">
+        <button id="send-btn">发送</button>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        let messages = [];
+
+        function addMessage(text, isUser) {
+            const div = document.createElement('div');
+            div.className = `message ${isUser ? 'user' : 'bot'}`;
+            div.textContent = text;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            addMessage(text, true);
+            userInput.value = '';
+            sendBtn.disabled = true;
+
+            messages.push({ role: 'user', content: text });
+            addMessage('', false);
+            const botMessage = chatContainer.lastElementChild;
+
+            try {
+                // 正规：传 { messages: [...] }
+                const response = await fetch('/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: messages })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    // 去掉 SSE 的 data: 前缀和换行
+                    const content = chunk.replace(/^data: /, '').replace(/\n\n$/, '');
+                    fullText += content;
+                    botMessage.textContent = fullText;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+
+                messages.push({ role: 'assistant', content: fullText });
+            } catch (error) {
+                botMessage.textContent = '出错了，请重试';
+                console.error(error);
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
+    </script>
+</body>
+</html>
